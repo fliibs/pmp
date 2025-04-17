@@ -17,7 +17,7 @@ module pmp #(
     input   logic [11:0]                        csr_req_addr                        ,
     output  logic [31:0]                        csr_req_rdata                       ,
     output                                      csr_req_rvalid                      ,
-    output  logic [2:0]                         csr_act_rsp                         , //bit2: 0--normal 1--exception bit[1:0]: cause
+    output  logic [2:0]                         csr_act_rsp                         , //000--normal 010--exception
  
     input   logic [2:0]                         mode_state                          ,
 
@@ -36,22 +36,25 @@ module pmp #(
     logic [ADDR_WIDTH-1:0]         v_pmp_napot_mask  [PMP_CHANNEL_NUM-1:0];
     logic [79:0]                   v_pmp_en                               ;
 
-    //generate NAPORT mask
+    // generate NAPORT mask
     logic [ADDR_WIDTH-1:0]    pmp_addr_a1                        ;
     logic [ADDR_WIDTH-1:0]    pmp_addr_n                         ;
     logic [ADDR_WIDTH-1:0]    pmp_addr_onehot                    ;
     logic [ADDR_WIDTH-1:0]    pmp_addr_onehot_m1                 ;
     logic [ADDR_WIDTH-1:0]    pmp_napot_mask                     ;  
 
-    //v_pmp_addr_write
+    // v_pmp_addr_write
     pmp_cfg_t                 v_pmp_cfg_last  [PMP_CHANNEL_NUM-1:0]   ;
-    //v_pmp_addr_read
+    // v_pmp_addr_read
     logic [6:0]               v_pmp_read_addr                         ;
     logic [4:0]               v_pmp_read_addr_base                    ;
-    //v_pmp_wdata
+    // v_pmp_wdata
     logic [ADDR_WIDTH-1:0]    csr_wdata                               ;
-    //v_pmp_rvalid
+    // v_pmp_rvalid
     logic                     read_valid                              ;
+    // illegal csr_req_addr
+    logic                     illegal_csr_req_addr                    ;
+    logic                     csr_act_rsp_reg                         ;
 
     //csr_wdata
     always_comb begin: csr_wdata_module
@@ -67,9 +70,24 @@ module pmp #(
         endcase
     end
 
-    //pmp rsp normal or exception
-    assign csr_act_rsp[2] = (mode_state!=MACHINE) & csr_req_en;
-    assign csr_act_rsp[1:0] = 2'b0;
+    //pmp rsp normal or exception   
+    assign illegal_csr_req_addr = ((csr_req_addr<'h3b0)&&(csr_req_addr>'h3a7)) || 
+                                  ((csr_req_addr>'h3cf)&&(csr_req_addr<'h3f0));   // illegal csr_req_addr: 3a8~3af 3d0~3ef
+    assign csr_act_rsp[1] = (((mode_state!=MACHINE) || illegal_csr_req_addr) & csr_req_en) || csr_act_rsp_reg;
+    assign csr_act_rsp[0] = 1'b0;
+    assign csr_act_rsp[2] = 1'b0;
+
+    always@(posedge clk or negedge rst_n) begin
+        if(~rst_n) begin
+            csr_act_rsp_reg <= 1'b0;
+        end 
+        else if (csr_rrsp) begin
+            csr_act_rsp_reg <= 1'b0;
+        end 
+        else begin
+            csr_act_rsp_reg <= csr_act_rsp[1];
+        end 
+    end
 
     //v_pmp_wren generation
     assign v_pmp_read_addr = csr_req_addr-'h3A0;
@@ -156,13 +174,13 @@ module pmp #(
     always_ff @(posedge clk or negedge rst_n) begin : read_valid_module
         if (~rst_n) begin
             read_valid <= 1'd0;
-        end     
+        end   
+        else if (csr_rrsp) begin
+            read_valid <= 1'd0; 
+        end 
         else if (csr_req_en & csr_req_op[1]) begin
             read_valid <= 1'd1;
-        end 
-        else if (csr_rrsp) begin
-            read_valid <= 1'd0;
-        end
+        end              
     end
 
     assign csr_req_rvalid = csr_req_en | read_valid;
