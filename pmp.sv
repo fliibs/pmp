@@ -71,8 +71,7 @@ module pmp #(
     end
 
     //pmp rsp normal or exception   
-    assign illegal_csr_req_addr = ((csr_req_addr<'h3b0)&&(csr_req_addr>'h3a7)) || 
-                                  ((csr_req_addr>'h3cf)&&(csr_req_addr<'h3f0));   // illegal csr_req_addr: 3a8~3af 3d0~3ef
+    assign illegal_csr_req_addr = (csr_req_addr>'h3bf)&&(csr_req_addr<'h3f0);   // illegal csr_req_addr: 3c0~3ef
     assign csr_act_rsp[1] = (((mode_state!=MACHINE) || illegal_csr_req_addr) & csr_req_en) || csr_act_rsp_reg;
     assign csr_act_rsp[0] = 1'b0;
     assign csr_act_rsp[2] = 1'b0;
